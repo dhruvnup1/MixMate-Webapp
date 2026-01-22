@@ -8,9 +8,5 @@ MixMate is a React + Vite webapp for controlling an automatic drink dispenser ov
 2. `npm run dev`
 
 ## BLE customization
-
-Set your device UUIDs in `src/hooks/useBleDevice.js`:
-- `BLE_SERVICE_UUID`
-- `BLE_CHARACTERISTIC_UUID`
-
+BLE portion of this site has not been set up yet. 
 BLE requires HTTPS or localhost to connect in modern browsers.
