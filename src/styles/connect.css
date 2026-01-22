@@ -1,0 +1,60 @@
+﻿.connect-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.status-pill {
+  padding: var(--space-2) var(--space-4);
+  border-radius: 999px;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.status-pill.disconnected {
+  background: rgba(193, 71, 71, 0.12);
+  color: var(--color-danger);
+}
+
+.status-pill.connecting {
+  background: rgba(30, 93, 91, 0.12);
+  color: var(--color-primary);
+}
+
+.status-pill.connected {
+  background: rgba(44, 122, 75, 0.12);
+  color: var(--color-success);
+}
+
+.status-device {
+  color: var(--color-muted);
+}
+
+.button-row {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.error-banner {
+  background: rgba(193, 71, 71, 0.1);
+  border: 1px solid rgba(193, 71, 71, 0.3);
+  color: var(--color-danger);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+.note {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  border-left: 3px solid var(--color-accent);
+  padding-left: var(--space-3);
+}

@@ -1,0 +1,19 @@
+﻿.recipes-page .card {
+  margin-bottom: var(--space-4);
+}
+
+.search-input {
+  margin-top: var(--space-3);
+}
+
+.recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.recipe-card ul {
+  padding-left: 1.1rem;
+  margin: var(--space-2) 0 0;
+  color: var(--color-muted);
+}
