@@ -1,16 +1,16 @@
 ﻿@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
 
 :root {
-  --color-bg: #f4f1ed;
-  --color-surface: #ffffff;
-  --color-ink: #1f1c1a;
-  --color-muted: #6d655f;
-  --color-primary: #1e5d5b;
-  --color-primary-dark: #174543;
-  --color-accent: #d98b5f;
-  --color-border: #e3ded8;
-  --color-danger: #c14747;
-  --color-success: #2c7a4b;
+  --color-bg: #0f0f0f;
+  --color-surface: #1a1a1a;
+  --color-ink: #e8e8e8;
+  --color-muted: #a0a0a0;
+  --color-primary: #00d9ff;
+  --color-primary-dark: #00a8cc;
+  --color-accent: #ff6b9d;
+  --color-border: #2a2a2a;
+  --color-danger: #ff5252;
+  --color-success: #4ade80;
 
   --font-sans: "Manrope", "Segoe UI", Tahoma, sans-serif;
   --radius-lg: 18px;
@@ -26,8 +26,8 @@
   --space-7: 40px;
   --space-8: 56px;
 
-  --shadow-soft: 0 12px 30px rgba(29, 27, 25, 0.12);
-  --shadow-card: 0 8px 20px rgba(29, 27, 25, 0.08);
+  --shadow-soft: 0 12px 30px rgba(0, 217, 255, 0.15);
+  --shadow-card: 0 8px 20px rgba(0, 217, 255, 0.08);
 }
 
 * {
@@ -38,7 +38,7 @@ body {
   margin: 0;
   font-family: var(--font-sans);
   color: var(--color-ink);
-  background: radial-gradient(circle at top, #fbf8f4, #f0ebe4 60%);
+  background: radial-gradient(circle at top left, #1a1a1a, #0f0f0f 60%);
 }
 
 a {

@@ -2,8 +2,12 @@
 import { useBleDevice } from "../hooks/useBleDevice.js";
 
 export default function ConnectDevice() {
+
+
   const { status, deviceName, error, connect, disconnect } = useBleDevice();
   const [noteVisible] = useState(true);
+
+
 
   return (
     <section className="page connect-page">
