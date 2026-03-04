@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./Context/AuthContext";
+import { BleProvider } from "./Context/BleContext.jsx"; // Import BleProvider
 
 import "./styles/variables.css";
 import "./styles/layout.css";
@@ -12,12 +13,15 @@ import "./styles/login.css";
 import "./styles/recipes.css";
 import "./styles/connect.css";
 
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <BleProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BleProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

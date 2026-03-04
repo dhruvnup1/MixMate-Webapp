@@ -7,6 +7,10 @@ import ConnectDevice from "./pages/ConnectDevice.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import Signup from "./pages/Signup.jsx";
 import Account from "./pages/Account.jsx";
+import DeviceStatus from "./pages/DeviceStatus.jsx";
+import Dispense from "./pages/Dispense.jsx";
+import PumpConfig from "./pages/PumpConfig.jsx";
+import { BleProvider } from "./Context/BleContext.jsx";
 
 export default function App() {
   return (
@@ -38,6 +42,30 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Account />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/device-status"
+            element={
+              <ProtectedRoute>
+                <DeviceStatus />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dispense"
+            element={
+              <ProtectedRoute>
+                <Dispense />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pump-config"
+            element={
+              <ProtectedRoute>
+                <PumpConfig />
               </ProtectedRoute>
             }
           />

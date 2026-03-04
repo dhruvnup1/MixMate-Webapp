@@ -1,9 +1,12 @@
 ﻿import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../Context/AuthContext";
+import { useBle } from "../Context/BleContext";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const { status } = useBle();
   const navigate = useNavigate();
+  const isDeviceConnected = status === "connected";
 
   const handleAccountClick = async () => {
     // Navigate to account page when avatar is clicked
@@ -50,6 +53,24 @@ export default function Navbar() {
           >
             Connect Device
           </NavLink>
+
+          {user && (
+            <NavLink
+              to="/device-status"
+              className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+            >
+              Device Status
+            </NavLink>
+          )}
+
+          {user && isDeviceConnected && (
+            <NavLink
+              to="/pump-config"
+              className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+            >
+              Pump Config
+            </NavLink>
+          )}
 
           {user && (
             <button
