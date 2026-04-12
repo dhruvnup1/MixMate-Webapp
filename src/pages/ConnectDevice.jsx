@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from "react";
-import { useBle } from "../context/BleContext.jsx";
+import { useBle } from "../Context/BleContext.jsx";
 
 const SCAN_STYLES = `
 @keyframes radar-ping {
@@ -24,40 +24,19 @@ const SCAN_STYLES = `
 }
 `;
 
-function SignalBars({ rssi }) {
-  const strength = rssi > -50 ? 4 : rssi > -65 ? 3 : rssi > -75 ? 2 : 1;
-  return (
-    <div style={{ display: "flex", gap: 3, alignItems: "flex-end" }}>
-      {[7, 11, 15, 19].map((h, i) => (
-        <div key={i} style={{
-          width: 4, height: h, borderRadius: 2,
-          background: i < strength ? "var(--color-primary, #00d9ff)" : "rgba(255,255,255,0.12)",
-          transition: "background 0.3s",
-        }} />
-      ))}
-    </div>
-  );
-}
-
 export default function ConnectDevice() {
   // useBle() reads from shared context — same instance as DeviceStatus
   const { status, deviceName, error, connect, disconnect } = useBle();
 
-  const [scanPhase, setScanPhase]           = useState("idle");
-  const [visibleDevices, setVisibleDevices] = useState([]);
+  const [scanPhase, setScanPhase] = useState("idle");
 
   const isScanning  = scanPhase === "scanning";
   const isConnected = status === "connected";
 
   // Reset scan UI on disconnect
   useEffect(() => {
-    if (status === "disconnected") {
-      setScanPhase("idle");
-      setVisibleDevices([]);
-    }
-    if (status === "connected") {
-      setScanPhase("idle");
-    }
+    if (status === "disconnected") setScanPhase("idle");
+    if (status === "connected")    setScanPhase("idle");
   }, [status]);
 
   const handleScan = async () => {
@@ -65,7 +44,6 @@ export default function ConnectDevice() {
 
     // Show radar immediately while the OS popup is open
     setScanPhase("scanning");
-    setVisibleDevices([]);
 
     // Open the browser BLE picker straight away — no artificial delay.
     // The radar animation plays in the background while the user picks their device.
@@ -108,7 +86,8 @@ export default function ConnectDevice() {
               transition: "all 0.5s ease",
             }}>
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none"
-                stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                aria-hidden="true">
                 <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/>
               </svg>
             </div>

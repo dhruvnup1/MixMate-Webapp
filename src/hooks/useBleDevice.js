@@ -107,7 +107,7 @@ export function useBleDevice() {
     }
     try {
       const encoded = new TextEncoder().encode(message);
-      await rxCharRef.current.writeValue(encoded);
+      await rxCharRef.current.writeValueWithoutResponse(encoded);
     } catch (err) {
       setError(err?.message || "Failed to send message.");
     }

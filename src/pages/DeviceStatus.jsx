@@ -1,24 +1,39 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../Context/AuthContext";
 import { useBle } from "../Context/BleContext.jsx";
 import { db } from "../firebase/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
+// 100 mL/min matches the ESP32 firmware (MS_PER_ML=600) and the LCD display.
+const FLOW_RATE_ML_PER_MIN = 100;
+
 export default function DeviceStatus() {
   const { status, sendMessage, lastMessage } = useBle();
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const location  = useLocation();
+
+  // Passed in from Recipes via navigate("/device-status", { state: { recipe } })
+  const recipe = location.state?.recipe ?? null;
 
   const [testStatus, setTestStatus]             = useState(null);
   const [showMessagePopup, setShowMessagePopup] = useState(false);
   const [message, setMessage]                   = useState("");
   const [pumpConfig, setPumpConfig]             = useState({});
+  const [pumpConfigLoaded, setPumpConfigLoaded] = useState(false);
 
-  // ── Dummy weight — updates whenever ESP32 sends "WEIGHT:<value>" ──────────
-  // e.g. ESP32 sends "WEIGHT:450" → displays 450 g
-  // Swap this out for real load cell data when your circuit is ready.
+  // Weight — updated by ESP32 "WEIGHT:<value>" BLE messages
   const [weight, setWeight] = useState(0);
+
+  // ── Dispense progress state ───────────────────────────────────────────────
+  // activeDispense: { [pumpId]: { durationMs, startMs } } — set once commands are sent
+  const [activeDispense, setActiveDispense] = useState(null);
+  const [dispensePct, setDispensePct]       = useState({});  // { [pumpId]: 0–100 }
+  const [dispenseDone, setDispenseDone]     = useState(false);
+  const [bannerVisible, setBannerVisible]   = useState(false);
+  const dispenseStarted = useRef(false);
+  const rafRef          = useRef(null);
 
   const isConnected = status === "connected";
 
@@ -34,14 +49,15 @@ export default function DeviceStatus() {
 
     const fetchPumpConfig = async () => {
       try {
-        const configRef = doc(db, "users", user.uid, "config", "pumps");
+        const configRef  = doc(db, "users", user.uid, "config", "pumps");
         const configSnap = await getDoc(configRef);
-
         if (configSnap.exists()) {
           setPumpConfig(configSnap.data());
         }
       } catch (error) {
         console.error("Error fetching pump config:", error);
+      } finally {
+        setPumpConfigLoaded(true);
       }
     };
 
@@ -58,19 +74,108 @@ export default function DeviceStatus() {
       return;
     }
 
-    // Weight update — ESP32 sends "WEIGHT:450"
     if (lastMessage.startsWith("WEIGHT:")) {
       const val = parseFloat(lastMessage.split(":")[1]);
       if (!isNaN(val)) setWeight(val);
     }
   }, [lastMessage, testStatus]);
 
+  // ── Send DISPENSE commands + start per-pump timers ────────────────────────
+  useEffect(() => {
+    if (!recipe || !pumpConfigLoaded || dispenseStarted.current || !isConnected) return;
+    dispenseStarted.current = true;
+
+    // Build pumpId → { liquid, amountMl, durationMs } for every matched ingredient
+    const pumpMap = {};
+    for (const ing of recipe.ingredients ?? []) {
+      const pumpId = Object.keys(pumpConfig).find(
+        k => pumpConfig[k].toLowerCase() === ing.liquid.toLowerCase()
+      );
+      if (pumpId) {
+        pumpMap[pumpId] = {
+          liquid:    ing.liquid,
+          amountMl:  ing.amountMl,
+          durationMs: (ing.amountMl / FLOW_RATE_ML_PER_MIN) * 60 * 1000,
+        };
+      } else {
+        console.warn(`DeviceStatus: no pump assigned for "${ing.liquid}" — skipping`);
+      }
+    }
+
+    if (Object.keys(pumpMap).length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      // LOGIN — sends user's name so the LCD idle screen shows a greeting
+      const name = user?.displayName || user?.email || "";
+      if (name) {
+        await sendMessage(`LOGIN:${name}`);
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      // START — tells ESP32/LCD to clear state and enter dispensing mode
+      if (cancelled) return;
+      await sendMessage("START");
+      await new Promise(r => setTimeout(r, 300));
+
+      // DISPENSE:<ingredient>,<ml> — one command per matched pump
+      for (const [, { liquid, amountMl }] of Object.entries(pumpMap)) {
+        if (cancelled) return;
+        await sendMessage(`DISPENSE:${liquid},${amountMl}`);
+        await new Promise(r => setTimeout(r, 300));
+      }
+      if (cancelled) return;
+
+      // All commands sent — start all timers from this moment
+      const now = Date.now();
+      setActiveDispense(
+        Object.fromEntries(
+          Object.entries(pumpMap).map(([id, { durationMs }]) => [id, { durationMs, startMs: now }])
+        )
+      );
+    })();
+
+    return () => { cancelled = true; };
+  }, [recipe, pumpConfigLoaded, isConnected, pumpConfig, sendMessage, user]);
+
+  // ── Drive progress bars via requestAnimationFrame ─────────────────────────
+  useEffect(() => {
+    if (!activeDispense) return;
+
+    const tick = () => {
+      const now = Date.now();
+      const pcts = {};
+      let allDone = true;
+      for (const [id, { durationMs, startMs }] of Object.entries(activeDispense)) {
+        const pct = Math.min(100, Math.floor(((now - startMs) / durationMs) * 50) * 2);
+        pcts[id] = pct;
+        if (pct < 100) allDone = false;
+      }
+      setDispensePct(pcts);
+      if (allDone) {
+        setDispenseDone(true);
+        clearInterval(rafRef.current);
+      }
+    };
+
+    rafRef.current = setInterval(tick, 100);
+    return () => clearInterval(rafRef.current);
+  }, [activeDispense]);
+
+  // ── Show "Dispense Complete!" banner for 3 s then fade out ────────────────
+  useEffect(() => {
+    if (!dispenseDone) return;
+    setBannerVisible(true);
+    const t = setTimeout(() => setBannerVisible(false), 3000);
+    return () => clearTimeout(t);
+  }, [dispenseDone]);
+
   const handleTestConnection = async () => {
     if (!isConnected) return;
     setTestStatus("waiting");
     await sendMessage("PING");
     setTimeout(() => {
-      setTestStatus((cur) => cur === "waiting" ? "fail" : cur);
+      setTestStatus(cur => cur === "waiting" ? "fail" : cur);
     }, 4000);
   };
 
@@ -107,6 +212,28 @@ export default function DeviceStatus() {
 
   return (
     <section className="page">
+
+      {/* ── Dispense Complete banner ───────────────────────────────────────── */}
+      {bannerVisible && (
+        <div
+          className="anim-fade-in"
+          style={{
+            position: "fixed", top: 24, left: "50%", transform: "translateX(-50%)",
+            zIndex: 1000,
+            padding: "14px 32px",
+            borderRadius: 12,
+            background: "linear-gradient(135deg, var(--color-primary), var(--color-accent))",
+            color: "#fff",
+            fontWeight: 700, fontSize: 18,
+            letterSpacing: "0.05em",
+            whiteSpace: "nowrap",
+            boxShadow: "0 0 32px rgba(0,217,255,0.4), 0 4px 24px rgba(0,0,0,0.4)",
+          }}
+        >
+          Dispense Complete!
+        </div>
+      )}
+
       <div className="container" style={{ position: "relative" }}>
 
         {/* Top Left Specs Panel */}
@@ -148,8 +275,15 @@ export default function DeviceStatus() {
               { bottom: "25%", left:  "22%", delay: 0.4 },
               { bottom: "25%", right: "22%", delay: 0.5 },
             ];
-            const pos = positions[idx];
-            const drinkName = pumpConfig[opt.id.toString()] || "";
+            const pos       = positions[idx];
+            const pumpIdStr    = opt.id.toString();
+            const drinkName    = pumpConfig[pumpIdStr] || "";
+            const isActive     = Boolean(activeDispense?.[pumpIdStr]);
+            const pct          = dispensePct[pumpIdStr] ?? 0;
+            const remainingSec = isActive && pct < 100
+              ? Math.max(0, Math.ceil(((1 - pct / 100) * activeDispense[pumpIdStr].durationMs) / 1000))
+              : 0;
+
             return (
               <button
                 key={opt.id}
@@ -170,11 +304,11 @@ export default function DeviceStatus() {
                   alignItems: "center",
                   gap: "4px",
                 }}
-                onMouseEnter={(e) => {
+                onMouseEnter={e => {
                   e.currentTarget.style.textShadow = "0 0 20px rgba(0, 217, 255, 0.6), 0 0 8px rgba(0, 217, 255, 0.8)";
                   e.currentTarget.style.transform = "scale(1.1)";
                 }}
-                onMouseLeave={(e) => {
+                onMouseLeave={e => {
                   e.currentTarget.style.textShadow = "0 0 12px rgba(0, 217, 255, 0.3)";
                   e.currentTarget.style.transform = "scale(1)";
                 }}
@@ -184,6 +318,27 @@ export default function DeviceStatus() {
                   <span style={{ fontSize: 11, color: "var(--color-accent)", fontWeight: 400, opacity: 0.8 }}>
                     {drinkName}
                   </span>
+                )}
+                {/* Per-pump progress bar — only rendered when this pump is active in a recipe dispense */}
+                {isActive && (
+                  <div style={{ width: 72, marginTop: 2 }}>
+                    <div style={{
+                      width: "100%", height: 4, borderRadius: 2,
+                      background: "rgba(255,255,255,0.08)", overflow: "hidden",
+                    }}>
+                      <div style={{
+                        height: "100%",
+                        width: `${pct}%`,
+                        background: pct >= 100
+                          ? "var(--color-success)"
+                          : "linear-gradient(90deg, var(--color-primary), var(--color-accent))",
+                        transition: "width 0.18s ease",
+                      }} />
+                    </div>
+                    <div style={{ fontSize: 9, color: "var(--color-muted)", textAlign: "center", marginTop: 2 }}>
+                      {pct < 100 ? `${Math.round(pct)}% · ${remainingSec}s` : "Done"}
+                    </div>
+                  </div>
                 )}
               </button>
             );
@@ -225,12 +380,12 @@ export default function DeviceStatus() {
               width: "min(400px, 90vw)", padding: 24,
               background: "var(--color-surface)", borderRadius: 12,
             }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
           >
             <h3>Send Message to Machine</h3>
             <textarea
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={e => setMessage(e.target.value)}
               placeholder='e.g. "PUMP_ON" or {"cmd":"dispense","ml":30}'
               style={{
                 width: "100%", minHeight: 120, padding: 12,

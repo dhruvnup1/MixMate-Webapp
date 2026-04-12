@@ -62,6 +62,7 @@
 
 .page {
   position: relative;
+  animation: slideUp 0.25s ease both;
 }
 
 .card {

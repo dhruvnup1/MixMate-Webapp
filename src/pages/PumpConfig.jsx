@@ -6,8 +6,9 @@ import "../styles/pump-config.css";
 
 const PumpCard = ({ pumpId, placeholder, value, onChange }) => (
   <div className="pump-card">
-    <label className="pump-label">Pump {pumpId}</label>
+    <label className="pump-label" htmlFor={`pump-input-${pumpId}`}>Pump {pumpId}</label>
     <input
+      id={`pump-input-${pumpId}`}
       type="text"
       className="input"
       placeholder={placeholder || "e.g. vodka"}

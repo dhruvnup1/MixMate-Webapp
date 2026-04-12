@@ -23,7 +23,7 @@ export default function Navbar() {
     <header className="navbar">
       <div className="container navbar-inner">
         <div className="brand">MixMate</div>
-        <nav className="nav-links">
+        <nav className="nav-links" aria-label="Main navigation">
           <NavLink
             to="/home"
             className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
@@ -76,6 +76,7 @@ export default function Navbar() {
             <button
               onClick={handleAccountClick}
               title={user.displayName || user.email}
+              aria-label={user.displayName || user.email || "Account"}
               className="nav-link"
               style={{ padding: 6, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
             >

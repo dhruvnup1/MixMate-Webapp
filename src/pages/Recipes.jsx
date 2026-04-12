@@ -134,7 +134,7 @@ export default function Recipes() {
 
   // ── Dispense recipe ────────────────────────────────────────────────────────
   const handleDispense = () => {
-    navigate("/dispense", { state: { recipe: selectedRecipe } });
+    navigate("/device-status", { state: { recipe: selectedRecipe } });
     setShowDetailsModal(false);
   };
 
@@ -173,6 +173,7 @@ export default function Recipes() {
                 {/* Delete Button */}
                 <button
                   onClick={(e) => handleDeleteRecipe(recipe.id, e)}
+                  aria-label={`Delete ${recipe.name}`}
                   style={{
                     position: "absolute",
                     top: 16,

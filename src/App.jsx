@@ -8,15 +8,15 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import Signup from "./pages/Signup.jsx";
 import Account from "./pages/Account.jsx";
 import DeviceStatus from "./pages/DeviceStatus.jsx";
-import Dispense from "./pages/Dispense.jsx";
 import PumpConfig from "./pages/PumpConfig.jsx";
-import { BleProvider } from "./Context/BleContext.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 
 export default function App() {
   return (
     <div className="app-shell">
       <Navbar />
       <main className="app-main">
+        <ErrorBoundary>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -54,14 +54,6 @@ export default function App() {
             }
           />
           <Route
-            path="/dispense"
-            element={
-              <ProtectedRoute>
-                <Dispense />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/pump-config"
             element={
               <ProtectedRoute>
@@ -71,6 +63,7 @@ export default function App() {
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   );
