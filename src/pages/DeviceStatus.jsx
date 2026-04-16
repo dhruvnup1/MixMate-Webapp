@@ -5,8 +5,8 @@ import { useBle } from "../Context/BleContext.jsx";
 import { db } from "../firebase/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
-// 100 mL/min matches the ESP32 firmware (MS_PER_ML=600) and the LCD display.
-const FLOW_RATE_ML_PER_MIN = 100;
+// 72 mL/min — matches the ESP32 firmware and the LCD display.
+const FLOW_RATE_ML_PER_MIN = 72;
 
 export default function DeviceStatus() {
   const { status, sendMessage, lastMessage } = useBle();
@@ -243,7 +243,7 @@ export default function DeviceStatus() {
         }}>
           <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--color-muted)", marginBottom: 16 }}>Pump Specs</div>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-accent)", marginBottom: 16, fontFamily: "'Space Grotesk', sans-serif", textShadow: "0 0 10px rgba(255, 107, 157, 0.4)" }}>
-            ◆ 100 mL/min
+            ◆ 72 mL/min
           </div>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-success)", fontFamily: "'Space Grotesk', sans-serif", textShadow: "0 0 10px rgba(74, 222, 128, 0.4)" }}>
             ◈ Weight: <span style={{ color: "var(--color-success)", fontWeight: 700 }}>{weight} g</span>
@@ -263,7 +263,7 @@ export default function DeviceStatus() {
             fontSize: 24, fontWeight: 700, color: "#fff",
             boxShadow: "var(--shadow-soft)", zIndex: 10,
           }}>
-            Device
+            MixMate
           </div>
 
           {options.map((opt, idx) => {
