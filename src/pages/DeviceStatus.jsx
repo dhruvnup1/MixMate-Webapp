@@ -1,174 +1,102 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../Context/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { useBle } from "../Context/BleContext.jsx";
-import { db } from "../firebase/firebase";
-import { doc, getDoc } from "firebase/firestore";
-
-// 72 mL/min — matches the ESP32 firmware and the LCD display.
-const FLOW_RATE_ML_PER_MIN = 72;
+import { useDispense } from "../Context/DispenseContext.jsx";
 
 export default function DeviceStatus() {
   const { status, sendMessage, lastMessage } = useBle();
-  const { user } = useAuth();
-  const navigate  = useNavigate();
-  const location  = useLocation();
+  const navigate = useNavigate();
 
-  // Passed in from Recipes via navigate("/device-status", { state: { recipe } })
-  const recipe = location.state?.recipe ?? null;
+  const {
+    pumpConfig,
+    activeDispense,
+    dispensePct,
+    dispenseDone,
+    forceStopped,
+    missingIngredients,
+  } = useDispense();
 
-  const [testStatus, setTestStatus]             = useState(null);
-  const [showMessagePopup, setShowMessagePopup] = useState(false);
-  const [message, setMessage]                   = useState("");
-  const [pumpConfig, setPumpConfig]             = useState({});
-  const [pumpConfigLoaded, setPumpConfigLoaded] = useState(false);
+  const [testStatus, setTestStatus] = useState(null);
 
-  // Weight — updated by ESP32 "WEIGHT:<value>" BLE messages
-  const [weight, setWeight] = useState(0);
+  // ── Clean machine state ───────────────────────────────────────────────────
+  const [showCleanWarning, setShowCleanWarning] = useState(false);
+  const [cleaning, setCleaning]                 = useState(false);
+  const [cleanCountdown, setCleanCountdown]     = useState(100);
 
-  // ── Dispense progress state ───────────────────────────────────────────────
-  // activeDispense: { [pumpId]: { durationMs, startMs } } — set once commands are sent
-  const [activeDispense, setActiveDispense] = useState(null);
-  const [dispensePct, setDispensePct]       = useState({});  // { [pumpId]: 0–100 }
-  const [dispenseDone, setDispenseDone]     = useState(false);
-  const [bannerVisible, setBannerVisible]   = useState(false);
-  const dispenseStarted = useRef(false);
-  const rafRef          = useRef(null);
+  // Weight — updated by ESP32 "WEIGHT: <value>" BLE messages
+  const [weight, setWeight]           = useState(null);
+  const [weightStale, setWeightStale] = useState(false);
+  const [scaleStatus, setScaleStatus] = useState(null);
+  const lastWeightTimeRef             = useRef(null);
+
+  // Banner visibility for dispense complete (only shown while on this page)
+  const [bannerVisible, setBannerVisible]             = useState(false);
+  const [forceStoppedBanner, setForceStoppedBanner]   = useState(false);
 
   const isConnected = status === "connected";
 
   useEffect(() => {
-    if (status === "disconnected") {
-      navigate("/connect");
-    }
+    if (status === "disconnected") navigate("/connect");
   }, [status, navigate]);
-
-  // ── Fetch pump config from Firestore ──────────────────────────────────────
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchPumpConfig = async () => {
-      try {
-        const configRef  = doc(db, "users", user.uid, "config", "pumps");
-        const configSnap = await getDoc(configRef);
-        if (configSnap.exists()) {
-          setPumpConfig(configSnap.data());
-        }
-      } catch (error) {
-        console.error("Error fetching pump config:", error);
-      } finally {
-        setPumpConfigLoaded(true);
-      }
-    };
-
-    fetchPumpConfig();
-  }, [user]);
 
   // ── Parse incoming BLE messages ───────────────────────────────────────────
   useEffect(() => {
-    if (!lastMessage) return;
+    const msg = lastMessage.text?.trim();
+    if (!msg) return;
 
-    if (lastMessage === "PONG" && testStatus === "waiting") {
+    if (msg === "PONG" && testStatus === "waiting") {
       setTestStatus("success");
       setTimeout(() => setTestStatus(null), 3000);
       return;
     }
 
-    if (lastMessage.startsWith("WEIGHT:")) {
-      const val = parseFloat(lastMessage.split(":")[1]);
-      if (!isNaN(val)) setWeight(val);
+    // WEIGHT: <value>  — sent by scale.cpp printWeight() every 500 ms when READY
+    if (msg.startsWith("WEIGHT:")) {
+      const val = parseFloat(msg.slice(7).trim());
+      if (!isNaN(val)) {
+        setWeight(val);
+        setWeightStale(false);
+        setScaleStatus("ready");
+        lastWeightTimeRef.current = Date.now();
+      }
+      return;
     }
+
+    // Scale state-machine messages from scale.cpp printf()
+    if (msg.includes("Waiting for glass")) { setScaleStatus("waiting"); return; }
+    if (msg.includes("Taring"))            { setScaleStatus("taring");  return; }
+    if (msg.includes("Ready to pour"))     { setScaleStatus("ready");   return; }
+    if (msg.includes("Glass removed"))     { setScaleStatus("waiting"); return; }
+
+    // "Current: %.2f, Filtered: %.2f, Alpha: %.2f" — verbose debug, ignored
+
   }, [lastMessage, testStatus]);
 
-  // ── Send DISPENSE commands + start per-pump timers ────────────────────────
+  // ── Stale-weight watchdog ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!recipe || !pumpConfigLoaded || dispenseStarted.current || !isConnected) return;
-    dispenseStarted.current = true;
-
-    // Build pumpId → { liquid, amountMl, durationMs } for every matched ingredient
-    const pumpMap = {};
-    for (const ing of recipe.ingredients ?? []) {
-      const pumpId = Object.keys(pumpConfig).find(
-        k => pumpConfig[k].toLowerCase() === ing.liquid.toLowerCase()
-      );
-      if (pumpId) {
-        pumpMap[pumpId] = {
-          liquid:    ing.liquid,
-          amountMl:  ing.amountMl,
-          durationMs: (ing.amountMl / FLOW_RATE_ML_PER_MIN) * 60 * 1000,
-        };
-      } else {
-        console.warn(`DeviceStatus: no pump assigned for "${ing.liquid}" — skipping`);
+    const id = setInterval(() => {
+      if (lastWeightTimeRef.current && Date.now() - lastWeightTimeRef.current > 3000) {
+        setWeightStale(true);
       }
-    }
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
-    if (Object.keys(pumpMap).length === 0) return;
-
-    let cancelled = false;
-    (async () => {
-      // LOGIN — sends user's name so the LCD idle screen shows a greeting
-      const name = user?.displayName || user?.email || "";
-      if (name) {
-        await sendMessage(`LOGIN:${name}`);
-        await new Promise(r => setTimeout(r, 300));
-      }
-
-      // START — tells ESP32/LCD to clear state and enter dispensing mode
-      if (cancelled) return;
-      await sendMessage("START");
-      await new Promise(r => setTimeout(r, 300));
-
-      // DISPENSE:<ingredient>,<ml> — one command per matched pump
-      for (const [, { liquid, amountMl }] of Object.entries(pumpMap)) {
-        if (cancelled) return;
-        await sendMessage(`DISPENSE:${liquid},${amountMl}`);
-        await new Promise(r => setTimeout(r, 300));
-      }
-      if (cancelled) return;
-
-      // All commands sent — start all timers from this moment
-      const now = Date.now();
-      setActiveDispense(
-        Object.fromEntries(
-          Object.entries(pumpMap).map(([id, { durationMs }]) => [id, { durationMs, startMs: now }])
-        )
-      );
-    })();
-
-    return () => { cancelled = true; };
-  }, [recipe, pumpConfigLoaded, isConnected, pumpConfig, sendMessage, user]);
-
-  // ── Drive progress bars via requestAnimationFrame ─────────────────────────
-  useEffect(() => {
-    if (!activeDispense) return;
-
-    const tick = () => {
-      const now = Date.now();
-      const pcts = {};
-      let allDone = true;
-      for (const [id, { durationMs, startMs }] of Object.entries(activeDispense)) {
-        const pct = Math.min(100, Math.floor(((now - startMs) / durationMs) * 50) * 2);
-        pcts[id] = pct;
-        if (pct < 100) allDone = false;
-      }
-      setDispensePct(pcts);
-      if (allDone) {
-        setDispenseDone(true);
-        clearInterval(rafRef.current);
-      }
-    };
-
-    rafRef.current = setInterval(tick, 100);
-    return () => clearInterval(rafRef.current);
-  }, [activeDispense]);
-
-  // ── Show "Dispense Complete!" banner for 3 s then fade out ────────────────
+  // ── Show "Dispense Complete!" banner when done (while on this page) ────────
   useEffect(() => {
     if (!dispenseDone) return;
     setBannerVisible(true);
     const t = setTimeout(() => setBannerVisible(false), 3000);
     return () => clearTimeout(t);
   }, [dispenseDone]);
+
+  // ── Show "Dispensing Stopped" banner on force-stop ────────────────────────
+  useEffect(() => {
+    if (!forceStopped) return;
+    setForceStoppedBanner(true);
+    const t = setTimeout(() => setForceStoppedBanner(false), 5000);
+    return () => clearTimeout(t);
+  }, [forceStopped]);
 
   const handleTestConnection = async () => {
     if (!isConnected) return;
@@ -179,11 +107,29 @@ export default function DeviceStatus() {
     }, 4000);
   };
 
-  const handleSendMessage = async () => {
-    if (!message.trim()) return;
-    await sendMessage(message.trim());
-    setMessage("");
-    setShowMessagePopup(false);
+  // 72 mL/min × (100 s / 60 s) = 120 mL → exactly 100 seconds per pump
+  const CLEAN_ML = 120;
+
+  const handleStartCleaning = async () => {
+    setShowCleanWarning(false);
+    setCleaning(true);
+    setCleanCountdown(100);
+
+    await sendMessage("START");
+    await new Promise(r => setTimeout(r, 300));
+
+    for (let pumpId = 1; pumpId <= 6; pumpId++) {
+      await sendMessage(`DISPENSE:${pumpId},water,${CLEAN_ML}`);
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    // Drive the countdown for 100 seconds
+    for (let s = 99; s >= 0; s--) {
+      await new Promise(r => setTimeout(r, 1000));
+      setCleanCountdown(s);
+    }
+
+    setCleaning(false);
   };
 
   const options = [
@@ -234,6 +180,68 @@ export default function DeviceStatus() {
         </div>
       )}
 
+      {/* ── Force-stopped banner ───────────────────────────────────────────── */}
+      {forceStoppedBanner && (
+        <div
+          className="anim-fade-in"
+          style={{
+            position: "fixed", top: 24, left: "50%", transform: "translateX(-50%)",
+            zIndex: 1000,
+            padding: "18px 32px",
+            borderRadius: 12,
+            background: "rgba(20, 8, 8, 0.97)",
+            border: "1px solid rgba(255,80,80,0.5)",
+            color: "#fff",
+            fontWeight: 700, fontSize: 16,
+            letterSpacing: "0.04em",
+            boxShadow: "0 0 40px rgba(255,80,80,0.3), 0 4px 24px rgba(0,0,0,0.5)",
+            maxWidth: "min(420px, 90vw)",
+            textAlign: "center",
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontSize: 20, marginBottom: 6 }}>⊘ Dispensing Stopped</div>
+          <div style={{ fontSize: 13, color: "rgba(255,180,180,0.85)", fontWeight: 400 }}>
+            You stopped the machine. All pumps have been halted.
+          </div>
+        </div>
+      )}
+
+      {/* ── Missing ingredients error ──────────────────────────────────────── */}
+      {missingIngredients.length > 0 && (
+        <div
+          className="anim-fade-in"
+          style={{
+            position: "fixed", top: 24, left: "50%", transform: "translateX(-50%)",
+            zIndex: 1000,
+            padding: "18px 32px",
+            borderRadius: 12,
+            background: "rgba(20, 10, 10, 0.95)",
+            border: "1px solid rgba(255,80,80,0.4)",
+            color: "#ff6b6b",
+            fontWeight: 600, fontSize: 15,
+            letterSpacing: "0.03em",
+            boxShadow: "0 0 32px rgba(255,80,80,0.25), 0 4px 24px rgba(0,0,0,0.5)",
+            maxWidth: "min(480px, 90vw)",
+            textAlign: "center",
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
+            Cannot Dispense — Missing Ingredients
+          </div>
+          <div style={{ fontSize: 13, color: "rgba(255,107,107,0.8)" }}>
+            No pump assigned for:{" "}
+            <span style={{ fontWeight: 700, color: "#ff6b6b" }}>
+              {missingIngredients.join(", ")}
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 8 }}>
+            Assign all ingredients in Pump Config before dispensing.
+          </div>
+        </div>
+      )}
+
       <div className="container" style={{ position: "relative" }}>
 
         {/* Top Left Specs Panel */}
@@ -245,9 +253,25 @@ export default function DeviceStatus() {
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-accent)", marginBottom: 16, fontFamily: "'Space Grotesk', sans-serif", textShadow: "0 0 10px rgba(255, 107, 157, 0.4)" }}>
             ◆ 72 mL/min
           </div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-success)", fontFamily: "'Space Grotesk', sans-serif", textShadow: "0 0 10px rgba(74, 222, 128, 0.4)" }}>
-            ◈ Weight: <span style={{ color: "var(--color-success)", fontWeight: 700 }}>{weight} g</span>
+          <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>
+            <span style={{
+              color: weight !== null && !weightStale ? "var(--color-success)" : "var(--color-muted)",
+              textShadow: weight !== null && !weightStale ? "0 0 10px rgba(74, 222, 128, 0.4)" : "none",
+            }}>
+              ◈ Weight:{" "}
+              <span style={{ fontWeight: 700 }}>
+                {weight !== null && !weightStale ? `${weight.toFixed(1)} g` : "— g"}
+              </span>
+            </span>
           </div>
+          {scaleStatus && (
+            <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 5, letterSpacing: "0.04em" }}>
+              {scaleStatus === "waiting" && "⬤ Waiting for glass"}
+              {scaleStatus === "taring"  && "⬤ Taring…"}
+              {scaleStatus === "ready"   && !weightStale && "⬤ Scale ready"}
+              {scaleStatus === "ready"   && weightStale  && "⬤ No signal"}
+            </div>
+          )}
         </div>
 
         <div style={{
@@ -276,10 +300,10 @@ export default function DeviceStatus() {
               { bottom: "25%", right: "22%", delay: 0.5 },
             ];
             const pos       = positions[idx];
-            const pumpIdStr    = opt.id.toString();
-            const drinkName    = pumpConfig[pumpIdStr] || "";
-            const isActive     = Boolean(activeDispense?.[pumpIdStr]);
-            const pct          = dispensePct[pumpIdStr] ?? 0;
+            const pumpIdStr = opt.id.toString();
+            const drinkName = pumpConfig[pumpIdStr] || "";
+            const isActive  = Boolean(activeDispense?.[pumpIdStr]);
+            const pct       = dispensePct[pumpIdStr] ?? 0;
             const remainingSec = isActive && pct < 100
               ? Math.max(0, Math.ceil(((1 - pct / 100) * activeDispense[pumpIdStr].durationMs) / 1000))
               : 0;
@@ -319,7 +343,6 @@ export default function DeviceStatus() {
                     {drinkName}
                   </span>
                 )}
-                {/* Per-pump progress bar — only rendered when this pump is active in a recipe dispense */}
                 {isActive && (
                   <div style={{ width: 72, marginTop: 2 }}>
                     <div style={{
@@ -329,14 +352,16 @@ export default function DeviceStatus() {
                       <div style={{
                         height: "100%",
                         width: `${pct}%`,
-                        background: pct >= 100
+                        background: forceStopped
+                          ? "rgba(255,107,107,0.5)"
+                          : pct >= 100
                           ? "var(--color-success)"
                           : "linear-gradient(90deg, var(--color-primary), var(--color-accent))",
-                        transition: "width 0.18s ease",
+                        transition: forceStopped ? "none" : "width 0.18s ease",
                       }} />
                     </div>
-                    <div style={{ fontSize: 9, color: "var(--color-muted)", textAlign: "center", marginTop: 2 }}>
-                      {pct < 100 ? `${Math.round(pct)}% · ${remainingSec}s` : "Done"}
+                    <div style={{ fontSize: 9, color: forceStopped ? "rgba(255,107,107,0.7)" : "var(--color-muted)", textAlign: "center", marginTop: 2 }}>
+                      {forceStopped ? `${Math.round(pct)}% · stopped` : pct < 100 ? `${Math.round(pct)}% · ${remainingSec}s` : "Done"}
                     </div>
                   </div>
                 )}
@@ -357,50 +382,102 @@ export default function DeviceStatus() {
 
           <button
             className="btn primary"
-            onClick={() => setShowMessagePopup(true)}
+            onClick={() => setShowCleanWarning(true)}
+            style={{ background: "rgba(255,107,107,0.12)", borderColor: "rgba(255,107,107,0.35)", color: "#ff6b6b" }}
           >
-            Send Message to Machine
+            Clean Machine
           </button>
         </div>
       </div>
 
-      {showMessagePopup && (
+      {/* ── Clean machine — warning modal ──────────────────────────────────── */}
+      {showCleanWarning && (
         <div
           style={{
             position: "fixed", inset: 0,
-            background: "rgba(0,0,0,0.7)",
+            background: "rgba(0,0,0,0.75)",
             display: "flex", alignItems: "center", justifyContent: "center",
             zIndex: 1000,
           }}
-          onClick={() => setShowMessagePopup(false)}
         >
           <div
             className="card anim-pop"
             style={{
-              width: "min(400px, 90vw)", padding: 24,
-              background: "var(--color-surface)", borderRadius: 12,
+              width: "min(460px, 90vw)", padding: "28px 28px 24px",
+              background: "var(--color-surface)",
+              border: "1px solid rgba(255,107,107,0.35)",
+              borderRadius: 14,
+              boxShadow: "0 0 40px rgba(255,107,107,0.15), 0 8px 32px rgba(0,0,0,0.5)",
             }}
-            onClick={e => e.stopPropagation()}
           >
-            <h3>Send Message to Machine</h3>
-            <textarea
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              placeholder='e.g. "PUMP_ON" or {"cmd":"dispense","ml":30}'
-              style={{
-                width: "100%", minHeight: 120, padding: 12,
-                marginTop: 12, marginBottom: 12,
-                background: "rgba(0,217,255,0.05)",
-                border: "1px solid var(--color-border)",
-                borderRadius: 8, color: "var(--color-ink)",
-                fontFamily: "var(--font-sans)", fontSize: 14,
-                resize: "vertical", boxSizing: "border-box",
-              }}
-            />
+            <div style={{ fontSize: 22, marginBottom: 12 }}>⚠️</div>
+            <h3 style={{ color: "#ff6b6b", marginBottom: 14, fontSize: 17 }}>Cleaning Mode</h3>
+            <p style={{ fontSize: 14, color: "var(--color-muted)", lineHeight: 1.7, marginBottom: 24 }}>
+              <strong style={{ color: "var(--color-ink)" }}>WARNING:</strong> To proceed with cleaning
+              mode you must change out all of the liquids to be water or soapy water. Once you have
+              replaced all 6 pumps please press <strong style={{ color: "var(--color-ink)" }}>Continue</strong>.
+            </p>
             <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-              <button className="btn ghost" onClick={() => setShowMessagePopup(false)}>Cancel</button>
-              <button className="btn primary" onClick={handleSendMessage} disabled={!message.trim()}>Send</button>
+              <button className="btn ghost" onClick={() => setShowCleanWarning(false)}>Cancel</button>
+              <button
+                className="btn primary"
+                onClick={handleStartCleaning}
+                style={{ background: "rgba(255,107,107,0.15)", borderColor: "rgba(255,107,107,0.4)", color: "#ff6b6b" }}
+              >
+                Continue
+              </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Clean machine — locked cleaning overlay ────────────────────────── */}
+      {cleaning && (
+        <div
+          style={{
+            position: "fixed", inset: 0,
+            background: "rgba(6, 8, 18, 0.88)",
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            zIndex: 2000,
+            backdropFilter: "blur(6px)",
+          }}
+        >
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+          <div style={{
+            width: 72, height: 72,
+            borderRadius: "50%",
+            border: "3px solid rgba(255,107,107,0.15)",
+            borderTopColor: "#ff6b6b",
+            animation: "spin 0.9s linear infinite",
+            marginBottom: 28,
+          }} />
+
+          <div style={{
+            fontSize: 22, fontWeight: 700,
+            color: "#ff6b6b",
+            letterSpacing: "0.06em",
+            fontFamily: "'Space Grotesk', sans-serif",
+            marginBottom: 10,
+          }}>
+            Cleaning Machine…
+          </div>
+
+          <div style={{
+            fontSize: 14, color: "var(--color-muted)",
+            marginBottom: 18, letterSpacing: "0.04em",
+          }}>
+            All 6 pumps running — do not disconnect
+          </div>
+
+          <div style={{
+            fontSize: 48, fontWeight: 700,
+            color: "#ff6b6b",
+            fontFamily: "'Space Mono', monospace",
+            textShadow: "0 0 24px rgba(255,107,107,0.5)",
+          }}>
+            {cleanCountdown}s
           </div>
         </div>
       )}

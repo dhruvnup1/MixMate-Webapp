@@ -18,7 +18,9 @@ export function useBleDevice() {
   const [status,      setStatus]      = useState("disconnected"); // "disconnected" | "connecting" | "connected"
   const [deviceName,  setDeviceName]  = useState("");
   const [error,       setError]       = useState("");
-  const [lastMessage, setLastMessage] = useState(""); // last string received FROM the ESP32
+  // { text: string, id: number } — id increments on every packet so consumers'
+  // useEffect always re-fires even when the text is identical (e.g. repeated WEIGHT lines)
+  const [lastMessage, setLastMessage] = useState({ text: "", id: 0 });
 
   // Refs hold the live GATT objects.
   // We use refs (not state) because we never need to re-render when they change internally.
@@ -33,7 +35,7 @@ export function useBleDevice() {
   const handleNotification = useCallback((event) => {
     const raw     = event.target.value; // DataView
     const decoded = new TextDecoder().decode(raw);
-    setLastMessage(decoded);
+    setLastMessage(prev => ({ text: decoded, id: prev.id + 1 }));
   }, []);
 
   // ── handleDisconnected ──────────────────────────────────────────────────────
@@ -144,7 +146,7 @@ export function useBleDevice() {
     status,
     deviceName,
     error,
-    lastMessage,  // last string received from ESP32 — use this to update your UI
+    lastMessage,  // { text: string, id: number } — id changes on every packet
     connect,
     disconnect,
     sendMessage,  // call this to send a string command to the ESP32

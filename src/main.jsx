@@ -3,7 +3,8 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { AuthProvider } from "./Context/AuthContext";
-import { BleProvider } from "./Context/BleContext.jsx"; // Import BleProvider
+import { BleProvider } from "./Context/BleContext.jsx";
+import { DispenseProvider } from "./Context/DispenseContext.jsx";
 
 import "./styles/variables.css";
 import "./styles/layout.css";
@@ -19,7 +20,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <BrowserRouter>
       <BleProvider>
         <AuthProvider>
-          <App />
+          <DispenseProvider>
+            <App />
+          </DispenseProvider>
         </AuthProvider>
       </BleProvider>
     </BrowserRouter>

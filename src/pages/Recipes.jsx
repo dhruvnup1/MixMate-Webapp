@@ -1,12 +1,14 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../Context/AuthContext";
+import { useDispense } from "../Context/DispenseContext.jsx";
 import { db } from "../firebase/firebase";
 import { collection, addDoc, onSnapshot, serverTimestamp, doc, deleteDoc } from "firebase/firestore";
 
 export default function Recipes() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { startDispense } = useDispense();
 
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -134,7 +136,8 @@ export default function Recipes() {
 
   // ── Dispense recipe ────────────────────────────────────────────────────────
   const handleDispense = () => {
-    navigate("/device-status", { state: { recipe: selectedRecipe } });
+    startDispense(selectedRecipe);
+    navigate("/device-status");
     setShowDetailsModal(false);
   };
 
