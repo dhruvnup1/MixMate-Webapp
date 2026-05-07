@@ -25,7 +25,7 @@ const SCAN_STYLES = `
 `;
 
 export default function ConnectDevice() {
-  // useBle() reads from shared context — same instance as DeviceStatus
+  // Same BLE instance as DeviceStatus — both read from the shared context.
   const { status, deviceName, error, connect, disconnect } = useBle();
 
   const [scanPhase, setScanPhase] = useState("idle");
@@ -33,7 +33,6 @@ export default function ConnectDevice() {
   const isScanning  = scanPhase === "scanning";
   const isConnected = status === "connected";
 
-  // Reset scan UI on disconnect
   useEffect(() => {
     if (status === "disconnected") setScanPhase("idle");
     if (status === "connected")    setScanPhase("idle");
@@ -42,11 +41,8 @@ export default function ConnectDevice() {
   const handleScan = async () => {
     if (status !== "disconnected") return;
 
-    // Show radar immediately while the OS popup is open
+    // Start the radar before calling connect() so it's already animating when the OS popup opens.
     setScanPhase("scanning");
-
-    // Open the browser BLE picker straight away — no artificial delay.
-    // The radar animation plays in the background while the user picks their device.
     await connect();
 
     setScanPhase("idle");
@@ -64,7 +60,6 @@ export default function ConnectDevice() {
             Pair your MixMate dispenser over BLE.
           </p>
 
-          {/* ── Radar visual ──────────────────────────────────────────────── */}
           <div style={{
             position: "relative",
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -104,7 +99,6 @@ export default function ConnectDevice() {
             </div>
           </div>
 
-          {/* ── Scanning hint ─────────────────────────────────────────────── */}
           {isScanning && (
             <div style={{
               background: "rgba(0,217,255,0.04)",
@@ -117,7 +111,6 @@ export default function ConnectDevice() {
             </div>
           )}
 
-          {/* ── Connected device badge ────────────────────────────────────── */}
           {isConnected && (
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -138,7 +131,6 @@ export default function ConnectDevice() {
             </div>
           )}
 
-          {/* ── Action button ─────────────────────────────────────────────── */}
           <div style={{ display: "flex", gap: 10 }}>
             {!isConnected ? (
               <button

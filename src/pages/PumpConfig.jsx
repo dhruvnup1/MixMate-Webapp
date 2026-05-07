@@ -33,19 +33,17 @@ export default function PumpConfig() {
     "6": "",
   });
 
-  // Snapshot of what's currently saved — used to detect which pumps changed
+  // Baseline after last save — diff against this to find which pumps need priming.
   const originalConfig = useRef({});
 
   const [loading, setLoading]         = useState(true);
   const [saving, setSaving]           = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
 
-  // Priming animation state
   const [priming, setPriming]           = useState(false);
   const [primingPumps, setPrimingPumps] = useState([]);  // pump IDs being primed
   const [primeCountdown, setPrimeCountdown] = useState(3);
 
-  // ── Fetch pump config from Firestore on mount ─────────────────────────────
   useEffect(() => {
     if (!user) return;
 
@@ -72,19 +70,16 @@ export default function PumpConfig() {
     fetchConfig();
   }, [user]);
 
-  // ── Handle input change ───────────────────────────────────────────────────
   const handlePumpChange = (pumpId, value) => {
     setPumpConfig((prev) => ({ ...prev, [pumpId]: value }));
   };
 
-  // ── Save configuration to Firestore ──────────────────────────────────────
   const handleSaveConfig = async () => {
     if (!user) return;
     setSaving(true);
     try {
       const configRef = doc(db, "users", user.uid, "config", "pumps");
 
-      // Create a clean object with only the non-empty pump values
       const cleanConfig = {};
       for (const [pumpId, liquid] of Object.entries(pumpConfig)) {
         if (liquid && liquid.trim()) {
@@ -92,42 +87,38 @@ export default function PumpConfig() {
         }
       }
 
-      // Use setDoc with merge: false to completely replace the document
+      // merge: false replaces the document entirely — avoids stale pump entries persisting.
       await setDoc(configRef, cleanConfig, { merge: false });
 
-      // Detect which pumps changed and now have a liquid assigned
       const changedPumps = Object.keys({ ...originalConfig.current, ...cleanConfig }).filter(pumpId => {
         const oldVal = (originalConfig.current[pumpId] ?? "").toLowerCase().trim();
         const newVal = (cleanConfig[pumpId] ?? "").toLowerCase().trim();
         return newVal !== "" && newVal !== oldVal;
       });
 
-      // Update the baseline so future saves compare correctly
+      // Advance the baseline so the next save diffs correctly.
       originalConfig.current = cleanConfig;
 
       setSaveMessage("Saved!");
       setTimeout(() => setSaveMessage(""), 2000);
 
-      // Prime changed pumps — clear pipes for 3 seconds using existing DISPENSE protocol
-      // 72 mL/min × (3 s / 60 s) = 3.6 mL → exactly 3 seconds of pump run time
+      // 3.6 mL at 72 mL/min = 3 s — enough to flush old liquid out of the tube.
       const PRIME_ML = 3.6;
       if (changedPumps.length > 0 && isConnected) {
         setPrimingPumps(changedPumps);
         setPriming(true);
         setPrimeCountdown(3);
 
-        // START clears ESP32 state and enters dispensing mode
+        // START resets ESP32 state machine and puts it in dispensing mode.
         await sendMessage("START");
         await new Promise(r => setTimeout(r, 300));
 
-        // One DISPENSE per changed pump using the newly assigned liquid name
         for (const pumpId of changedPumps) {
           const liquid = cleanConfig[pumpId];
           await sendMessage(`DISPENSE:${pumpId},${liquid},${PRIME_ML}`);
           await new Promise(r => setTimeout(r, 200));
         }
 
-        // Drive the countdown display for 3 seconds while hardware runs
         for (let s = 2; s >= 0; s--) {
           await new Promise(r => setTimeout(r, 1000));
           setPrimeCountdown(s);
@@ -160,7 +151,6 @@ export default function PumpConfig() {
   return (
     <section className="page pump-config-page">
 
-      {/* ── Priming overlay ─────────────────────────────────────────────────── */}
       {priming && (
         <div
           style={{
@@ -172,7 +162,6 @@ export default function PumpConfig() {
             backdropFilter: "blur(6px)",
           }}
         >
-          {/* Spinner ring */}
           <div style={{
             width: 72, height: 72,
             borderRadius: "50%",
@@ -213,26 +202,21 @@ export default function PumpConfig() {
         </div>
       )}
 
-      {/* CSS for spinner */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       <div className="container">
 
-        {/* Header */}
         <div className="card anim-slide-up" style={{ marginBottom: 40 }}>
           <h2>Pump Configuration</h2>
           <p className="muted">Assign a liquid to each pump slot</p>
         </div>
 
-        {/* MixMate icon above grid */}
         <div className="pump-center">
           <div className="mixmate-icon">MixMate</div>
         </div>
 
-        {/* 2x3 Grid Layout */}
         <div className="pump-radial-layout">
 
-          {/* Row 1 */}
           <div className="pump-position pump-top-left">
             <PumpCard 
               pumpId="1" 
@@ -250,7 +234,6 @@ export default function PumpConfig() {
             />
           </div>
 
-          {/* Row 2 */}
           <div className="pump-position pump-middle-left">
             <PumpCard 
               pumpId="3" 
@@ -268,7 +251,6 @@ export default function PumpConfig() {
             />
           </div>
 
-          {/* Row 3 */}
           <div className="pump-position pump-bottom-left">
             <PumpCard 
               pumpId="5" 
@@ -288,7 +270,6 @@ export default function PumpConfig() {
 
         </div>
 
-        {/* Save */}
         <div style={{ textAlign: "center", marginTop: 48 }}>
           <button
             className="btn primary"

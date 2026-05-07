@@ -18,18 +18,17 @@ export default function DeviceStatus() {
 
   const [testStatus, setTestStatus] = useState(null);
 
-  // ── Clean machine state ───────────────────────────────────────────────────
   const [showCleanWarning, setShowCleanWarning] = useState(false);
   const [cleaning, setCleaning]                 = useState(false);
-  const [cleanCountdown, setCleanCountdown]     = useState(100);
+  const [cleanCountdown, setCleanCountdown]     = useState(60);
 
-  // Weight — updated by ESP32 "WEIGHT: <value>" BLE messages
+  // Updated by "WEIGHT: <value>" BLE messages from the scale every ~500 ms
   const [weight, setWeight]           = useState(null);
   const [weightStale, setWeightStale] = useState(false);
   const [scaleStatus, setScaleStatus] = useState(null);
   const lastWeightTimeRef             = useRef(null);
 
-  // Banner visibility for dispense complete (only shown while on this page)
+  // Banners are page-local — the global DispensePill handles the pill elsewhere.
   const [bannerVisible, setBannerVisible]             = useState(false);
   const [forceStoppedBanner, setForceStoppedBanner]   = useState(false);
 
@@ -39,7 +38,6 @@ export default function DeviceStatus() {
     if (status === "disconnected") navigate("/connect");
   }, [status, navigate]);
 
-  // ── Parse incoming BLE messages ───────────────────────────────────────────
   useEffect(() => {
     const msg = lastMessage.text?.trim();
     if (!msg) return;
@@ -50,7 +48,7 @@ export default function DeviceStatus() {
       return;
     }
 
-    // WEIGHT: <value>  — sent by scale.cpp printWeight() every 500 ms when READY
+    // scale.cpp calls printWeight() every 500 ms while in READY state
     if (msg.startsWith("WEIGHT:")) {
       const val = parseFloat(msg.slice(7).trim());
       if (!isNaN(val)) {
@@ -62,17 +60,16 @@ export default function DeviceStatus() {
       return;
     }
 
-    // Scale state-machine messages from scale.cpp printf()
+    // Scale state messages from scale.cpp — map text to our local status enum
     if (msg.includes("Waiting for glass")) { setScaleStatus("waiting"); return; }
     if (msg.includes("Taring"))            { setScaleStatus("taring");  return; }
     if (msg.includes("Ready to pour"))     { setScaleStatus("ready");   return; }
     if (msg.includes("Glass removed"))     { setScaleStatus("waiting"); return; }
 
-    // "Current: %.2f, Filtered: %.2f, Alpha: %.2f" — verbose debug, ignored
+    // "Current: %.2f, Filtered: %.2f, Alpha: %.2f" debug lines from the filter — intentionally ignored
 
   }, [lastMessage, testStatus]);
 
-  // ── Stale-weight watchdog ─────────────────────────────────────────────────
   useEffect(() => {
     const id = setInterval(() => {
       if (lastWeightTimeRef.current && Date.now() - lastWeightTimeRef.current > 3000) {
@@ -82,7 +79,6 @@ export default function DeviceStatus() {
     return () => clearInterval(id);
   }, []);
 
-  // ── Show "Dispense Complete!" banner when done (while on this page) ────────
   useEffect(() => {
     if (!dispenseDone) return;
     setBannerVisible(true);
@@ -90,7 +86,6 @@ export default function DeviceStatus() {
     return () => clearTimeout(t);
   }, [dispenseDone]);
 
-  // ── Show "Dispensing Stopped" banner on force-stop ────────────────────────
   useEffect(() => {
     if (!forceStopped) return;
     setForceStoppedBanner(true);
@@ -107,13 +102,12 @@ export default function DeviceStatus() {
     }, 4000);
   };
 
-  // 72 mL/min × (100 s / 60 s) = 120 mL → exactly 100 seconds per pump
-  const CLEAN_ML = 120;
+  const CLEAN_ML = 72; // 72 mL/min × (60 s / 60 s) = 72 mL → 60 s per pump
 
   const handleStartCleaning = async () => {
     setShowCleanWarning(false);
     setCleaning(true);
-    setCleanCountdown(100);
+    setCleanCountdown(60);
 
     await sendMessage("START");
     await new Promise(r => setTimeout(r, 300));
@@ -123,8 +117,7 @@ export default function DeviceStatus() {
       await new Promise(r => setTimeout(r, 200));
     }
 
-    // Drive the countdown for 100 seconds
-    for (let s = 99; s >= 0; s--) {
+    for (let s = 59; s >= 0; s--) {
       await new Promise(r => setTimeout(r, 1000));
       setCleanCountdown(s);
     }
@@ -159,7 +152,6 @@ export default function DeviceStatus() {
   return (
     <section className="page">
 
-      {/* ── Dispense Complete banner ───────────────────────────────────────── */}
       {bannerVisible && (
         <div
           className="anim-fade-in"
@@ -180,7 +172,6 @@ export default function DeviceStatus() {
         </div>
       )}
 
-      {/* ── Force-stopped banner ───────────────────────────────────────────── */}
       {forceStoppedBanner && (
         <div
           className="anim-fade-in"
@@ -207,7 +198,6 @@ export default function DeviceStatus() {
         </div>
       )}
 
-      {/* ── Missing ingredients error ──────────────────────────────────────── */}
       {missingIngredients.length > 0 && (
         <div
           className="anim-fade-in"
@@ -244,7 +234,6 @@ export default function DeviceStatus() {
 
       <div className="container" style={{ position: "relative" }}>
 
-        {/* Top Left Specs Panel */}
         <div style={{
           position: "absolute", top: 24, left: 24,
           width: "fit-content", fontFamily: "'Manrope', sans-serif",
@@ -390,7 +379,6 @@ export default function DeviceStatus() {
         </div>
       </div>
 
-      {/* ── Clean machine — warning modal ──────────────────────────────────── */}
       {showCleanWarning && (
         <div
           style={{
@@ -431,7 +419,6 @@ export default function DeviceStatus() {
         </div>
       )}
 
-      {/* ── Clean machine — locked cleaning overlay ────────────────────────── */}
       {cleaning && (
         <div
           style={{

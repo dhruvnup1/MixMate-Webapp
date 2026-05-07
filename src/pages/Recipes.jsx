@@ -20,7 +20,6 @@ export default function Recipes() {
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-  // ── Fetch recipes from Firestore on mount ────────────────────────────────
   useEffect(() => {
     if (!user) return;
 
@@ -42,7 +41,6 @@ export default function Recipes() {
     return () => unsubscribe();
   }, [user]);
 
-  // ── Filter recipes by search query ────────────────────────────────────────
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return recipes;
@@ -51,24 +49,20 @@ export default function Recipes() {
     );
   }, [query, recipes]);
 
-  // ── Handle ingredient input changes ───────────────────────────────────────
   const handleIngredientChange = (idx, field, value) => {
     const updated = [...ingredients];
     updated[idx][field] = field === "amountMl" ? Number(value) || "" : value;
     setIngredients(updated);
   };
 
-  // ── Add new ingredient row ────────────────────────────────────────────────
   const addIngredient = () => {
     setIngredients([...ingredients, { liquid: "", amountMl: "" }]);
   };
 
-  // ── Remove ingredient row ─────────────────────────────────────────────────
   const removeIngredient = (idx) => {
     setIngredients(ingredients.filter((_, i) => i !== idx));
   };
 
-  // ── Save recipe to Firestore ──────────────────────────────────────────────
   const handleSaveRecipe = async () => {
     if (!recipeName.trim()) {
       alert("Recipe name is required.");
@@ -96,7 +90,6 @@ export default function Recipes() {
         ingredients: validIngredients,
       });
 
-      // Reset form and close modal
       setRecipeName("");
       setIngredients([{ liquid: "", amountMl: "" }]);
       setShowModal(false);
@@ -108,20 +101,17 @@ export default function Recipes() {
     }
   };
 
-  // ── Cancel modal ──────────────────────────────────────────────────────────
   const handleCancelModal = () => {
     setRecipeName("");
     setIngredients([{ liquid: "", amountMl: "" }]);
     setShowModal(false);
   };
 
-  // ── Handle recipe card click ──────────────────────────────────────────────
   const handleRecipeClick = (recipe) => {
     setSelectedRecipe(recipe);
     setShowDetailsModal(true);
   };
 
-  // ── Delete recipe from Firestore ───────────────────────────────────────────
   const handleDeleteRecipe = async (recipeId, e) => {
     e.stopPropagation();
     if (!confirm("Are you sure you want to delete this recipe?")) return;
@@ -134,7 +124,6 @@ export default function Recipes() {
     }
   };
 
-  // ── Dispense recipe ────────────────────────────────────────────────────────
   const handleDispense = () => {
     startDispense(selectedRecipe);
     navigate("/device-status");
@@ -173,7 +162,6 @@ export default function Recipes() {
                 onClick={() => handleRecipeClick(recipe)}
                 style={{ cursor: "pointer", position: "relative" }}
               >
-                {/* Delete Button */}
                 <button
                   onClick={(e) => handleDeleteRecipe(recipe.id, e)}
                   aria-label={`Delete ${recipe.name}`}
@@ -209,7 +197,6 @@ export default function Recipes() {
         )}
       </div>
 
-      {/* Floating Action Button */}
       <button
         className="btn primary"
         onClick={() => setShowModal(true)}
@@ -232,7 +219,6 @@ export default function Recipes() {
         +
       </button>
 
-      {/* Create Recipe Modal */}
       {showModal && (
         <div
           style={{
@@ -260,7 +246,6 @@ export default function Recipes() {
           >
             <h2>Create New Recipe</h2>
 
-            {/* Recipe Name Input */}
             <label className="field">
               Recipe Name
               <input
@@ -272,7 +257,6 @@ export default function Recipes() {
               />
             </label>
 
-            {/* Ingredients List */}
             <div style={{ marginTop: 24, marginBottom: 24 }}>
               <h3 style={{ marginBottom: 16 }}>Ingredients</h3>
               {ingredients.map((ing, idx) => (
@@ -320,7 +304,6 @@ export default function Recipes() {
               ))}
             </div>
 
-            {/* Add Ingredient Button */}
             <button
               className="btn ghost"
               onClick={addIngredient}
@@ -329,7 +312,6 @@ export default function Recipes() {
               + Add Ingredient
             </button>
 
-            {/* Modal Actions */}
             <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
               <button
                 className="btn ghost"
@@ -350,7 +332,6 @@ export default function Recipes() {
         </div>
       )}
 
-      {/* Recipe Details Modal */}
       {showDetailsModal && selectedRecipe && (
         <div
           style={{
@@ -378,7 +359,6 @@ export default function Recipes() {
           >
             <h2>{selectedRecipe.name}</h2>
 
-            {/* Ingredients List */}
             <div style={{ marginTop: 24, marginBottom: 24 }}>
               <h3 style={{ marginBottom: 16, color: "var(--color-primary)" }}>Ingredients</h3>
               {selectedRecipe.ingredients && selectedRecipe.ingredients.length > 0 ? (
@@ -403,7 +383,6 @@ export default function Recipes() {
               )}
             </div>
 
-            {/* Modal Actions */}
             <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
               <button
                 className="btn ghost"

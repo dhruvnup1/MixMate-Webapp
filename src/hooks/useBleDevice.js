@@ -1,14 +1,10 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
 
-// ─── UUIDs ────────────────────────────────────────────────────────────────────
-// Nordic UART Service (NUS) — the standard convention for UART-over-BLE.
-// Think of it like a virtual serial port over Bluetooth.
+// Nordic UART Service — de-facto standard for UART-over-BLE.
+// The ESP32 firmware advertises these same UUIDs.
 //
-// Your ESP32 firmware will advertise these same UUIDs.
-// nRF Connect recognizes these automatically and labels them "Nordic UART Service."
-//
-//   TX characteristic  =  ESP32 → Browser  (you SUBSCRIBE to this)
-//   RX characteristic  =  Browser → ESP32  (you WRITE to this)
+//   TX characteristic  =  ESP32 → Browser  (subscribe to receive)
+//   RX characteristic  =  Browser → ESP32  (write to send)
 //
 export const NUS_SERVICE_UUID      = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 export const NUS_TX_CHARACTERISTIC = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify (receive)
@@ -18,29 +14,22 @@ export function useBleDevice() {
   const [status,      setStatus]      = useState("disconnected"); // "disconnected" | "connecting" | "connected"
   const [deviceName,  setDeviceName]  = useState("");
   const [error,       setError]       = useState("");
-  // { text: string, id: number } — id increments on every packet so consumers'
-  // useEffect always re-fires even when the text is identical (e.g. repeated WEIGHT lines)
+  // { text, id } — id increments each packet so useEffect reruns even for duplicate messages
   const [lastMessage, setLastMessage] = useState({ text: "", id: 0 });
 
-  // Refs hold the live GATT objects.
-  // We use refs (not state) because we never need to re-render when they change internally.
+  // Refs, not state — GATT object changes don't need to trigger re-renders.
   const deviceRef = useRef(null);
   const rxCharRef = useRef(null); // write to this → sends data to ESP32
   const txCharRef = useRef(null); // subscribe to this → receives data from ESP32
 
-  // ── handleNotification ──────────────────────────────────────────────────────
-  // The browser calls this automatically whenever ESP32 sends a BLE notify packet.
-  // Raw data arrives as a DataView; we decode it to a UTF-8 string.
-  // In your app, instead of just storing it, you could parse JSON, dispatch actions, etc.
+  // Raw BLE notify data arrives as a DataView; decode to string here.
   const handleNotification = useCallback((event) => {
     const raw     = event.target.value; // DataView
     const decoded = new TextDecoder().decode(raw);
     setLastMessage(prev => ({ text: decoded, id: prev.id + 1 }));
   }, []);
 
-  // ── handleDisconnected ──────────────────────────────────────────────────────
-  // The browser fires "gattserverdisconnected" if the link drops unexpectedly
-  // (ESP32 powered off, out of range, etc.). We reset everything here.
+  // Fires if the link drops unexpectedly (powered off, out of range, etc.)
   const handleDisconnected = useCallback(() => {
     setStatus("disconnected");
     setDeviceName("");
@@ -48,7 +37,6 @@ export function useBleDevice() {
     txCharRef.current = null;
   }, []);
 
-  // ── connect ─────────────────────────────────────────────────────────────────
   const connect = useCallback(async () => {
     setError("");
 
@@ -61,10 +49,7 @@ export function useBleDevice() {
     try {
       setStatus("connecting");
 
-      // requestDevice() opens the browser's native scan popup.
-      // By filtering on NUS_SERVICE_UUID, the popup only shows devices
-      // that are actively advertising that service — same as filtering
-      // by UUID in nRF Connect's scan screen.
+      // Filtering by NUS_SERVICE_UUID keeps the picker to devices actively advertising it.
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ services: [NUS_SERVICE_UUID] }],
       });
@@ -75,16 +60,13 @@ export function useBleDevice() {
       // Attach disconnect listener BEFORE connecting to avoid a race condition.
       device.addEventListener("gattserverdisconnected", handleDisconnected);
 
-      // Walk the GATT tree: server → service → characteristics.
-      // This is identical to what nRF Connect does when you tap a device and browse services.
+      // Walk the GATT tree to get service and characteristic handles.
       const server       = await device.gatt.connect();
       const service      = await server.getPrimaryService(NUS_SERVICE_UUID);
       rxCharRef.current  = await service.getCharacteristic(NUS_RX_CHARACTERISTIC);
       txCharRef.current  = await service.getCharacteristic(NUS_TX_CHARACTERISTIC);
 
-      // Enable notifications on the TX characteristic.
-      // This is equivalent to pressing "Enable CCCDs" in nRF Connect on the TX characteristic.
-      // Without this, the ESP32 can send data but the browser will never receive it.
+      // Without startNotifications(), the browser will never receive data from the ESP32.
       await txCharRef.current.startNotifications();
       txCharRef.current.addEventListener("characteristicvaluechanged", handleNotification);
 
@@ -98,10 +80,7 @@ export function useBleDevice() {
     }
   }, [handleDisconnected, handleNotification]);
 
-  // ── sendMessage ─────────────────────────────────────────────────────────────
-  // Sends a UTF-8 string to the ESP32 by writing to the RX characteristic.
-  // BLE has a default MTU of 20 bytes. For short commands (e.g. "PUMP_ON",
-  // "STOP", small JSON) this is fine. For longer payloads you'd chunk the message.
+  // Default BLE MTU is 20 bytes — longer payloads need chunking.
   const sendMessage = useCallback(async (message) => {
     if (!rxCharRef.current) {
       setError("Not connected.");
@@ -115,7 +94,6 @@ export function useBleDevice() {
     }
   }, []);
 
-  // ── disconnect ──────────────────────────────────────────────────────────────
   const disconnect = useCallback(() => {
     setError("");
     // Stop listening to TX notifications before disconnecting.
@@ -128,8 +106,7 @@ export function useBleDevice() {
     handleDisconnected();
   }, [handleDisconnected, handleNotification]);
 
-  // ── cleanup on unmount ───────────────────────────────────────────────────────
-  // If the component using this hook unmounts while still connected, clean up listeners.
+  // Clean up event listeners if the component unmounts while still connected.
   useEffect(() => {
     return () => {
       const device = deviceRef.current;
@@ -149,6 +126,6 @@ export function useBleDevice() {
     lastMessage,  // { text: string, id: number } — id changes on every packet
     connect,
     disconnect,
-    sendMessage,  // call this to send a string command to the ESP32
+    sendMessage,
   };
 }

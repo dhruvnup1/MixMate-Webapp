@@ -9,7 +9,6 @@ export default function Navbar() {
   const isDeviceConnected = status === "connected";
 
   const handleAccountClick = async () => {
-    // Navigate to account page when avatar is clicked
     if (user) {
       navigate("/account");
     } else {

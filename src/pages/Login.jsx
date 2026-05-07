@@ -10,7 +10,7 @@ export default function Login() {
   const { login } = useAuth();
 
   const handleGoogleSignIn = () => {
-    // Placeholder for future Google Sign-In implementation
+    // Google Sign-In not wired up yet
     console.log("Google Sign-In clicked");
   };
 

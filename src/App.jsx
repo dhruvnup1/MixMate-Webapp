@@ -17,7 +17,7 @@ function DispensePill() {
   const navigate = useNavigate();
   const { activeDispense, dispensePct, dispenseDone, forceStopped, isDispensing, recipeName } = useDispense();
 
-  // Show when active, complete, or force-stopped — but not on the device-status page
+  // Hide on device-status since that page already shows full dispense detail.
   const visible = (isDispensing || dispenseDone || forceStopped) && location.pathname !== "/device-status";
   if (!visible) return null;
 
@@ -49,21 +49,18 @@ function DispensePill() {
       padding: "14px 16px",
       fontFamily: "'Space Grotesk', sans-serif",
     }}>
-      {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 13, color: headerColor, letterSpacing: "0.04em" }}>
           {forceStopped ? "⊘ Dispensing Stopped" : dispenseDone ? "✓ Dispense Complete" : "Dispensing…"}
         </div>
       </div>
 
-      {/* Recipe name */}
       {recipeName && (
         <div style={{ fontSize: 11, color: "var(--color-muted)", marginBottom: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {recipeName}
         </div>
       )}
 
-      {/* Force-stopped message */}
       {forceStopped && (
         <div style={{
           fontSize: 12, color: "rgba(255,107,107,0.85)",
@@ -77,13 +74,12 @@ function DispensePill() {
         </div>
       )}
 
-      {/* Per-pump progress bars */}
       {pumps.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
           {pumps.map(([id, { durationMs }]) => {
             const pct = dispensePct[id] ?? 0;
             const remainingSec = pct < 100 ? Math.max(0, Math.ceil(((1 - pct / 100) * durationMs) / 1000)) : 0;
-            // Bars freeze (no transition) and turn grey when force-stopped
+            // No transition on force-stop so bars visually freeze in place.
             const barColor = forceStopped
               ? "rgba(255,107,107,0.5)"
               : pct >= 100
@@ -110,7 +106,6 @@ function DispensePill() {
         </div>
       )}
 
-      {/* View button — only while actively dispensing */}
       {!dispenseDone && !forceStopped && (
         <button
           onClick={() => navigate("/device-status")}

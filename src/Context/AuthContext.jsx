@@ -86,7 +86,6 @@ export function AuthProvider({ children }) {
     async function signInWithGoogle() {
         const provider = new GoogleAuthProvider();
         const result = await signInWithPopup(auth, provider);
-        // ensure user doc exists
         const userRef = doc(db, "users", result.user.uid);
         const snap = await getDoc(userRef);
         if (!snap.exists()) {

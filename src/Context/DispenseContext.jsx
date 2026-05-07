@@ -23,7 +23,6 @@ export function DispenseProvider({ children }) {
   const rafRef     = useRef(null);
   const runningRef = useRef(false); // guard against double-start
 
-  // ── Load pump config whenever the logged-in user changes ─────────────────
   useEffect(() => {
     if (!user) return;
     const fetchConfig = async () => {
@@ -37,7 +36,6 @@ export function DispenseProvider({ children }) {
     fetchConfig();
   }, [user]);
 
-  // ── Drive progress bars at 100 ms intervals ───────────────────────────────
   useEffect(() => {
     if (!activeDispense) return;
 
@@ -63,7 +61,6 @@ export function DispenseProvider({ children }) {
     return () => clearInterval(rafRef.current);
   }, [activeDispense]);
 
-  // ── Auto-reset 4 s after dispense completes ───────────────────────────────
   useEffect(() => {
     if (!dispenseDone) return;
     const t = setTimeout(() => {
@@ -78,18 +75,15 @@ export function DispenseProvider({ children }) {
     return () => clearTimeout(t);
   }, [dispenseDone]);
 
-  // ── Handle "STOPPED" message from firmware (force-stop triggered on LCD) ──
+  // "STOPPED" is sent by the firmware when the LCD stop button is pressed.
   useEffect(() => {
     if (lastMessage.text?.trim() !== "STOPPED") return;
-    // Stop the progress interval so bars freeze at their current percentages.
-    // We deliberately keep activeDispense and dispensePct so the bars remain
-    // visible in their stopped state rather than disappearing.
+    // Keep activeDispense and dispensePct alive so bars freeze in place rather than vanishing.
     clearInterval(rafRef.current);
     runningRef.current = false;
     setDispenseDone(false);
     setMissingIngredients([]);
     setForceStopped(true);
-    // Auto-dismiss after 5 s then fully clear
     const t = setTimeout(() => {
       setForceStopped(false);
       setActiveDispense(null);
@@ -99,19 +93,17 @@ export function DispenseProvider({ children }) {
     return () => clearTimeout(t);
   }, [lastMessage]);
 
-  // ── startDispense — called from Recipes before navigating ─────────────────
   const startDispense = useCallback(async (recipe) => {
     if (runningRef.current) return;
     runningRef.current = true;
 
-    // Reset any previous dispense
     setMissingIngredients([]);
     setDispenseDone(false);
     setDispensePct({});
     setActiveDispense(null);
     setRecipeName(recipe.name ?? "");
 
-    // Always fetch a fresh pump config so the user sees the latest assignments
+    // Fetch fresh config — the user may have changed pump assignments since the page loaded.
     let config = pumpConfig;
     if (user) {
       try {
@@ -123,7 +115,6 @@ export function DispenseProvider({ children }) {
       } catch (e) { /* fall back to cached */ }
     }
 
-    // Match each recipe ingredient to a pump
     const pumpMap = {};
     for (const ing of recipe.ingredients ?? []) {
       const pumpId = Object.keys(config).find(
@@ -155,7 +146,6 @@ export function DispenseProvider({ children }) {
       return;
     }
 
-    // Send BLE command sequence
     const name = user?.displayName || user?.email || "";
     if (name) {
       await sendMessage(`LOGIN:${name}`);
@@ -168,7 +158,7 @@ export function DispenseProvider({ children }) {
       await new Promise(r => setTimeout(r, 300));
     }
 
-    // Kick off timers — all pumps start simultaneously from this moment
+    // All pumps start from the same timestamp so progress bars stay in sync.
     const now = Date.now();
     setActiveDispense(
       Object.fromEntries(
@@ -177,7 +167,6 @@ export function DispenseProvider({ children }) {
     );
   }, [pumpConfig, sendMessage, user]);
 
-  // ── clearDispense — call to fully dismiss the pill at any state ──────────
   const clearDispense = useCallback(() => {
     runningRef.current = false;
     clearInterval(rafRef.current);
