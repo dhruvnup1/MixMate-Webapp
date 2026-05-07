@@ -32,6 +32,8 @@ MixMate is a React + Vite web app for controlling an automatic cocktail dispense
    - In Project Settings → General, scroll to "Your apps" and register a Web app to get your config keys.
 
 4. **Configure environment variables**
+   
+   **For Professor, Please check our group's project folder in teams for the API keys to run this project.**
 
    Create a `.env` file in the project root:
 
@@ -46,7 +48,7 @@ MixMate is a React + Vite web app for controlling an automatic cocktail dispense
 
    All values come from the Firebase Web app config screen.
 
-5. **Start the development server**
+6. **Start the development server**
 
    ```bash
    npm run dev
